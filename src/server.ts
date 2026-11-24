@@ -42,8 +42,9 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
- * POST /webhooks/call-events  provider call events (signed when WEBHOOK_SECRET is set)
+ * POST /webhooks/call-events  provider call events
  * POST /webhooks/sms-inbound  inbound texts, used for STOP and START
+ * Both POST routes require a valid x-signature when WEBHOOK_SECRET is set.
  * GET  /healthz
  */
 export function createServer(service: TextbackService, config: Config): Server {

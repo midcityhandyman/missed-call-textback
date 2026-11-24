@@ -70,6 +70,11 @@ test("signatures are enforced when a secret is configured", async () => {
   const ok = await post(`${base}/webhooks/call-events`, event, { "x-signature": sign(secret, event) });
   assert.equal(ok.status, 200);
   assert.equal(sms.sent.length, 1);
+
+  // The inbound SMS webhook is signed too, so a stranger cannot opt callers in or out.
+  const stop = JSON.stringify({ from: "+12125550101", body: "STOP" });
+  assert.equal((await post(`${base}/webhooks/sms-inbound`, stop)).status, 401);
+  assert.equal((await post(`${base}/webhooks/sms-inbound`, stop, { "x-signature": sign(secret, stop) })).status, 200);
 });
 
 test("HttpSmsProvider posts JSON with a bearer key and an idempotency key", async () => {

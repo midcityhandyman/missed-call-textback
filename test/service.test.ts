@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../src/config.ts";
+import { TextbackService } from "../src/service.ts";
 import { MemoryStore } from "../src/store.ts";
 import { SendFailedError, ValidationError } from "../src/types.ts";
 import { missed, setup } from "./helpers.ts";
@@ -79,6 +80,18 @@ test("opted out callers are never texted, and START opts back in", async () => {
   assert.equal((await service.handleCallEvent(missed())).outcome, "sent");
 });
 
+test("opt out keywords tolerate case, punctuation and spacing, but not longer messages", () => {
+  const { service } = setup();
+  const phones = ["+12125550101", "+12125550102", "+12125550103", "+12125550104"];
+  ["Stop.", '"STOP"', "opt out", "Revoke!"].forEach((body, i) => {
+    assert.equal(service.handleInboundSms({ from: phones[i], body }).optedOut, true, body);
+  });
+  for (const body of ["stop by at 5 please", "can you stop the leak?", "", "ok"]) {
+    assert.equal(service.handleInboundSms({ from: "+12125550105", body }).optedOut, false, body);
+  }
+  assert.equal(service.handleInboundSms({ from: "+12125550101", body: "Start." }).optedOut, false);
+});
+
 test("answered calls are ignored", async () => {
   const { service, sms } = setup();
   const d = await service.handleCallEvent(missed("+12125550101", { type: "call.answered" }));
@@ -139,6 +152,31 @@ test("a failed queued send stays queued and goes out on the next flush", async (
   assert.deepEqual(await service.flushDue(), []);
   assert.equal((await service.flushDue()).length, 1);
   assert.equal(sms.sent.length, 1);
+});
+
+test("overlapping flushes send a queued text once, even if the provider ignores idempotency keys", async () => {
+  const { config, store, clock } = setup("2026-03-12T03:30:00Z");
+  let sends = 0;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  // A slow provider with no idempotency support: every call it receives is a real text.
+  const sms = {
+    async send() {
+      sends++;
+      await gate;
+      return { messageId: `slow_${sends}` };
+    },
+  };
+  const service = new TextbackService({ store, sms, config, now: () => new Date(clock.t) });
+  await service.handleCallEvent(missed("+12125550101"));
+  clock.t = Date.parse("2026-03-12T12:00:00Z");
+  const first = service.flushDue();
+  const second = service.flushDue(); // the next timer tick, while the first send is still in the air
+  release();
+  assert.equal((await first).length, 1);
+  assert.deepEqual(await second, []);
+  assert.equal(sends, 1);
+  assert.deepEqual(await service.flushDue(), []);
 });
 
 test("a provider failure releases the event so the webhook retry sends the text", async () => {

@@ -17,7 +17,7 @@ import {
   type SmsProvider,
 } from "./types.ts";
 
-const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
+const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"]);
 const START_WORDS = new Set(["START", "UNSTOP"]);
 
 export interface ServiceDeps {
@@ -55,6 +55,7 @@ export class TextbackService {
   private now: () => Date;
   private window: QuietWindow;
   private inFlight = new Map<string, Promise<Decision>>();
+  private flushing: Promise<Decision[]> | undefined;
 
   constructor(deps: ServiceDeps) {
     this.store = deps.store;
@@ -122,8 +123,22 @@ export class TextbackService {
     }
   }
 
-  /** Sends queued texts whose quiet hours have ended. Returns the decisions that changed. */
+  /**
+   * Sends queued texts whose quiet hours have ended. Returns the decisions that changed.
+   * A call made while an earlier flush is still awaiting the SMS provider does nothing,
+   * so a slow provider cannot make two timer ticks send the same queued text.
+   */
   async flushDue(): Promise<Decision[]> {
+    if (this.flushing) return [];
+    this.flushing = this.flushQueue();
+    try {
+      return await this.flushing;
+    } finally {
+      this.flushing = undefined;
+    }
+  }
+
+  private async flushQueue(): Promise<Decision[]> {
     const now = this.now();
     const changed: Decision[] = [];
     for (const item of this.store.dueDeferred(now.getTime())) {
@@ -165,12 +180,16 @@ export class TextbackService {
     return times.length ? Math.min(...times) : undefined;
   }
 
-  /** Inbound text from a caller. STOP style keywords opt out, START opts back in. */
+  /**
+   * Inbound text from a caller. STOP style keywords opt out, START opts back in.
+   * The message must be the keyword alone, but case, spacing and punctuation are ignored,
+   * so "Stop." and "opt out" count while "stop by at 5" does not.
+   */
   handleInboundSms(raw: unknown): { from: string; optedOut: boolean; changed: boolean } {
     const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
     const from = normalizePhone(r.from);
     if (!from) throw new ValidationError("from must be a phone number");
-    const word = typeof r.body === "string" ? r.body.trim().toUpperCase() : "";
+    const word = typeof r.body === "string" ? r.body.toUpperCase().replace(/[^A-Z]/g, "") : "";
     const before = this.store.isOptedOut(from);
     if (STOP_WORDS.has(word)) this.store.setOptOut(from, true);
     else if (START_WORDS.has(word)) this.store.setOptOut(from, false);
