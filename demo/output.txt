@@ -1,0 +1,57 @@
+Missed call text back simulator, seed 42
+One synthetic day of provider webhooks replayed against the real service with a virtual clock.
+Quiet hours 21:00 to 08:00 caller local time. Cooldown 24 hours. All people and numbers are fake.
+
+Eastern   | event         | event id | caller                          | caller local | result
+----------------------------------------------------------------------------------------------------------------------
+01:52 EDT | call.missed   | evt_0001 | Kit Placeholder +15035550111    | 22:52 PDT    | SKIPPED_OPTED_OUT: caller is on the opt out list
+07:30 EDT | call.missed   | evt_0002 | Lane Nightowl +18085550112      | 01:30 HST    | QUEUED until 08:00 HST (quiet hours for the caller)
+09:05 EDT | call.missed   | evt_0003 | Morgan Stopper +12125550113     | 09:05 EDT    | SENT msg_0001
+09:07 EDT | call.answered | evt_0004 | Kit Placeholder +15035550111    | 06:07 PDT    | IGNORED_NOT_MISSED: event type call.answered needs no text
+09:08 EDT | call.answered | evt_0004 | Kit Placeholder +15035550111    | 06:08 PDT    | DUPLICATE DELIVERY, no action (first result: ignored_not_missed)
+09:20 EDT | sms inbound   |          | Morgan Stopper +12125550113     | 09:20 EDT    | "STOP" -> opted out
+10:00 EDT | call.missed   | evt_0005 | Lane Nightowl +18085550112      | 04:00 HST    | SKIPPED_ALREADY_TEXTED: a text to this caller is already queued
+10:40 EDT | call.answered | evt_0006 | Emery Mockwell +13125550105     | 09:40 CDT    | IGNORED_NOT_MISSED: event type call.answered needs no text
+10:41 EDT | call.answered | evt_0006 | Emery Mockwell +13125550105     | 09:41 CDT    | DUPLICATE DELIVERY, no action (first result: ignored_not_missed)
+10:56 EDT | call.answered | evt_0007 | Indigo Sample +14155550109      | 07:56 PDT    | IGNORED_NOT_MISSED: event type call.answered needs no text
+11:20 EDT | call.missed   | evt_0008 | Blair Example +12125550102      | 11:20 EDT    | SENT msg_0002
+12:30 EDT | call.answered | evt_0009 | Gray Example +13035550107       | 10:30 MDT    | IGNORED_NOT_MISSED: event type call.answered needs no text
+12:49 EDT | call.missed   | evt_0010 | Kit Placeholder +15035550111    | 09:49 PDT    | SKIPPED_OPTED_OUT: caller is on the opt out list
+13:16 EDT | call.missed   | evt_0011 | Alex Sample +12125550101        | 13:16 EDT    | SENT msg_0003
+13:34 EDT | call.missed   | evt_0012 | Gray Example +13035550107       | 11:34 MDT    | SENT msg_0004
+14:00 EDT | queue release | evt_0002 | Lane Nightowl +18085550112      | 08:00 HST    | SENT msg_0005 (was queued)
+14:27 EDT | call.missed   | evt_0013 | Gray Example +13035550107       | 12:27 MDT    | SKIPPED_ALREADY_TEXTED: caller was already texted inside the cooldown window
+14:52 EDT | call.missed   | evt_0014 | Casey Placeholder +16175550103  | 14:52 EDT    | SENT msg_0006
+15:00 EDT | call.missed   | evt_0015 | Morgan Stopper +12125550113     | 15:00 EDT    | SKIPPED_OPTED_OUT: caller is on the opt out list
+15:50 EDT | call.missed   | evt_0016 | Emery Mockwell +13125550105     | 14:50 CDT    | SKIPPED_OPTED_OUT: caller is on the opt out list
+16:22 EDT | call.answered | evt_0017 | Devon Testcase +13125550104     | 15:22 CDT    | IGNORED_NOT_MISSED: event type call.answered needs no text
+16:26 EDT | call.missed   | evt_0018 | Finley Sample +15125550106      | 15:26 CDT    | SENT msg_0007
+16:31 EDT | call.missed   | evt_0019 | Alex Sample +12125550101        | 16:31 EDT    | SKIPPED_ALREADY_TEXTED: caller was already texted inside the cooldown window
+16:38 EDT | call.missed   | evt_0020 | Jules Example +12065550110      | 13:38 PDT    | SENT msg_0008
+17:26 EDT | call.missed   | evt_0021 | Jules Example +12065550110      | 14:26 PDT    | SKIPPED_ALREADY_TEXTED: caller was already texted inside the cooldown window
+17:54 EDT | call.missed   | evt_0022 | Blair Example +12125550102      | 17:54 EDT    | SKIPPED_ALREADY_TEXTED: caller was already texted inside the cooldown window
+20:37 EDT | call.missed   | evt_0023 | Harper Fixture +15055550108     | 18:37 MDT    | SENT msg_0009
+23:30 EDT | call.missed   | evt_0024 | Noel Latecall +14155550114      | 20:30 PDT    | SENT msg_0010
+23:31 EDT | call.missed   | evt_0024 | Noel Latecall +14155550114      | 20:31 PDT    | DUPLICATE DELIVERY, no action (first result: sent)
+23:40 EDT | call.missed   | evt_0025 | Oakley Latecall +16175550115    | 23:40 EDT    | QUEUED until 08:00 EDT (quiet hours for the caller)
+23:50 EDT | call.missed   | evt_0026 | Parker Changedmind +13035550116 | 21:50 MDT    | QUEUED until 08:00 MDT (quiet hours for the caller)
+23:55 EDT | sms inbound   |          | Parker Changedmind +13035550116 | 21:55 MDT    | "stop" -> opted out
+08:00 EDT | queue release | evt_0025 | Oakley Latecall +16175550115    | 08:00 EDT    | SENT msg_0011 (was queued)
+10:00 EDT | queue release | evt_0026 | Parker Changedmind +13035550116 | 08:00 MDT    | DROPPED: caller opted out while the text was queued
+
+Summary
+  deliveries               29
+  redeliveries             3
+  skipped_opted_out        5
+  sent                     11
+  ignored_not_missed       5
+  skipped_already_texted   5
+  texts actually sent      11
+
+Invariant checks
+  [PASS] one decision per provider event id
+  [PASS] redeliveries sent nothing extra
+  [PASS] no number texted twice inside the cooldown window
+  [PASS] no text sent during the recipient's quiet hours
+  [PASS] no text sent to a number after it opted out
+  [PASS] every caller with a missed call who never opted out got exactly one text
